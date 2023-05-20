@@ -1,5 +1,3 @@
-import shutil
-
 from utils.docker_image_scan import DockerImageScanResponse, DockerImageScan
 from datetime import datetime
 
