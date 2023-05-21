@@ -1,5 +1,7 @@
 import json
 import os
+import time
+from pathlib import Path
 import tarfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,7 +9,7 @@ from datetime import datetime
 from engines.hard_coded_credentials_engine import HardCodedCredentialsEngine
 from utils.docker_image_layer_metadata import DockerImageLayerMetadata
 
-_EXTRACTED_IMAGE_PATH = "./extraction_dir/"
+_EXTRACTED_IMAGE_PATH = ".\\extraction_dir"
 _IMAGE_ROOT = "image root"
 
 
@@ -41,44 +43,59 @@ class DockerImageScan:
         self.__image_file_name = os.path.splitext(image_file_base_path)[0]
 
         try:
-            self.__extract_image_files(file_path, _EXTRACTED_IMAGE_PATH + self.__image_file_name)
-            return self.__scan_image_files(_EXTRACTED_IMAGE_PATH + self.__image_file_name, "Image", _IMAGE_ROOT)
+            self.__extract_image_files(file_path, os.path.join(_EXTRACTED_IMAGE_PATH, self.__image_file_name))
+            return self.__scan_image_files(os.path.join(_EXTRACTED_IMAGE_PATH, self.__image_file_name), "Image")
         except Exception as e:
             error = "Request for image: " + file_path + " " + str(e)
             return DockerImageScanResponse(verdict="N/A", error=error)
 
     def __extract_image_files(self, file_path, extracted_path):
+        if os.path.isdir(extracted_path):
+            return
         print(str(datetime.now()) + " - Extracting " + file_path)
         try:
-            with tarfile.open(file_path, "r:") as tf:
-                for file_ in tf:
+            with tarfile.open(file_path, 'r') as tar:
+                for file_ in tar:
                     if not file_.islnk() and not file_.issym():
-                        tf.extract(member=file_, path=extracted_path)
+                        tar.extract(member=file_, path=extracted_path)
+
+                # Extract nested tar files
+                for member in tar.getmembers():
+                    if member.isfile() and member.name.endswith('.tar'):
+                        nested_tar_path = os.path.join(extracted_path, member.name)
+                        nested_tar_destination = os.path.join(extracted_path, os.path.splitext(member.name)[0])
+                        self.__extract_image_files(nested_tar_path, nested_tar_destination)
+
+                        # Delete the extracted nested tar file
+                        while True:
+                            try:
+                                os.remove(nested_tar_path)
+                                break
+                            except:
+                                time.sleep(1)
+
         except Exception as e:
             print(str(datetime.now()) + " - Extracting file error: " + str(e))
             self.start_scan()
 
-        print(str(datetime.now()) + " - Extracting finished")
+        print(str(datetime.now()) + " - Extraction finished")
 
-    def __scan_image_files(self, extracted_path, file_type, layer_name):
+    def __scan_image_files(self, extracted_path, file_type):
         print(str(datetime.now()) + " - Scanning Docker " + file_type + " files...")
         for subdir, dirs, files in os.walk(extracted_path):
             for file in files:
-                if file.endswith(".tar"):
-                    layer_name = subdir.split(os.sep)[-1]
-                    layer_tar_path = os.path.join(subdir, file).replace("\\", "/")
-                    self.__extract_image_files(layer_tar_path, _EXTRACTED_IMAGE_PATH + self.__image_file_name +
-                                               "/layers/" + layer_name)
-                    self.__scan_image_files(_EXTRACTED_IMAGE_PATH + self.__image_file_name + "/layers/" + layer_name,
-                                            "layer[" + layer_name + "]", layer_name)
+                cur_path_arr = Path(subdir).parts
+                if len(cur_path_arr) <= 2:
+                    layer_name = _IMAGE_ROOT
                 else:
-                    file_path = os.path.join(subdir, file).replace("\\", "/")
-                    response = self.__hard_coded_cred_engine.credentials_scan(file_path)
-                    if response[0] == "VULNERABLE":
-                        self.__verdict = "VULNERABLE"
-                        self.__indications_list.append(response[1])
-                        self.__sources_list.append(response[2])
-                        self.__get_layer_metadata(layer_name)
+                    layer_name = cur_path_arr[2]
+                file_path = os.path.join(subdir, file)
+                response = self.__hard_coded_cred_engine.credentials_scan(file_path)
+                if response[0] == "VULNERABLE":
+                    self.__verdict = "VULNERABLE"
+                    self.__indications_list.append(response[1])
+                    self.__sources_list.append(response[2])
+                    self.__get_layer_metadata(layer_name)
 
         return DockerImageScanResponse(self.__verdict, self.__indications_list, self.__sources_list,
                                        self.__layer_metadata)
@@ -87,7 +104,7 @@ class DockerImageScan:
         if layer_name == _IMAGE_ROOT:
             self.__layer_metadata.append(DockerImageLayerMetadata(layer_name, "N/A", "N/A", "N/A", "N/A"))
             return
-        with open(_EXTRACTED_IMAGE_PATH + self.__image_file_name + "/" + layer_name + "/JSON") as layer_file:
+        with open(os.path.join(_EXTRACTED_IMAGE_PATH, self.__image_file_name, layer_name, "JSON")) as layer_file:
             layer_data = json.load(layer_file)
             parent_metadata = "N/A"
             if "parent" in layer_data:

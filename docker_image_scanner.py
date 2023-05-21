@@ -13,23 +13,20 @@ class DockerImageScanner:
         self.__post_scan(scan_response)
 
     def __post_scan(self, scan_response: DockerImageScanResponse):
-        if scan_response.verdict == "VULNERABLE":
-            print(str(datetime.now()) + " - Final Verdict: Found VULNERABLE Image\n")
-        else:
-            print(str(datetime.now()) + " - Final Verdict: Benign Image\n")
 
         print(str(datetime.now()) + " - Docker Image Report:")
         print(("{}{}".format('verdict: '.ljust(20), scan_response.verdict)))
-        for indication, source, layer in zip(scan_response.indications, scan_response.sources, scan_response.layers):
-            print("-------------------------------------------------------------------------------------------------")
-            print(("{}{}".format('indication: '.ljust(20), indication)))
-            print(("{}{}".format('source: '.ljust(20), source)))
-            print(("{}".format('layer metadata: '.ljust(20))))
-            print(("{}{}{}".format(' '.ljust(20), 'id: '.ljust(20), layer.layer_id)))
-            print(("{}{}{}".format(' '.ljust(20), 'parent: '.ljust(20), layer.parent)))
-            print(("{}{}{}".format(' '.ljust(20), 'created: '.ljust(20), layer.created)))
-            print(("{}{}{}".format(' '.ljust(20), 'container: '.ljust(20), layer.container)))
-            print(("{}{}{}".format(' '.ljust(20), 'container_config: '.ljust(20), layer.container_config)))
+        if scan_response.verdict == "VULNERABLE":
+            for indication, source, layer in zip(scan_response.indications, scan_response.sources, scan_response.layers):
+                print("-----------------------------------------------------------------------------------------------")
+                print(("{}{}".format('indication: '.ljust(20), indication)))
+                print(("{}{}".format('source: '.ljust(20), source)))
+                print(("{}".format('layer metadata: '.ljust(20))))
+                print(("{}{}{}".format(' '.ljust(20), 'id: '.ljust(20), layer.layer_id)))
+                print(("{}{}{}".format(' '.ljust(20), 'parent: '.ljust(20), layer.parent)))
+                print(("{}{}{}".format(' '.ljust(20), 'created: '.ljust(20), layer.created)))
+                print(("{}{}{}".format(' '.ljust(20), 'container: '.ljust(20), layer.container)))
+                print(("{}{}{}".format(' '.ljust(20), 'container_config: '.ljust(20), layer.container_config)))
         if scan_response.error:
             print(("{}{}".format('error: '.ljust(20), scan_response.error)))
 
